@@ -11,7 +11,10 @@ import pytchat
 
 tracemalloc.start()
 
-# Функция для загрузки API ключей из файла
+TWITCH_PREFIX = '[Twitch]'
+YT_PREFIX = '[YouTube]'
+TIKTOK_PREFIX = '[TikTok]'
+
 def load_api_keys(filename="api_keys.json"):
     try:
         with open(filename, "r", encoding="utf-8") as f:
@@ -21,21 +24,15 @@ def load_api_keys(filename="api_keys.json"):
         print(f"Error loading API keys: {e}")
         return {}
 
-# Загрузка ключей
 api_keys = load_api_keys()
 TWITCH_OAUTH_TOKEN = api_keys.get("twitch", "")
 TWITCH_NICKNAME = api_keys.get("twitch_nickname", "your_twitch_username")
 
-# Twitch IRC WebSocket URL
 TWITCH_IRC_URL = "wss://irc-ws.chat.twitch.tv:443"
 
-# Глобальная переменная для хранения окна вывода чата и флаг остановки
 chat_output = None
 stop_event = threading.Event()
 
-# -------------------------------
-# Twitch Listener (через IRC WebSocket)
-# -------------------------------
 async def listen_twitch(channel, output_callback):
     try:
         async with websockets.connect(TWITCH_IRC_URL) as ws:
@@ -54,13 +51,10 @@ async def listen_twitch(channel, output_callback):
                         username = parts[1].split("!")[0]
                         chat_message = parts[2].rstrip("\n")
                         timestamp = datetime.now().strftime("%H:%M:%S")
-                        output_callback(f"[{timestamp}][🟣 Twitch] {username}: {chat_message}")
+                        output_callback(f"[{timestamp}]{TWITCH_PREFIX} {username}: {chat_message}")
     except Exception as e:
         output_callback(f"Error in Twitch listener: {e}")
 
-# -------------------------------
-# YouTube Listener с использованием pytchat
-# -------------------------------
 async def listen_youtube(video_id, output_callback):
     try:
         chat = pytchat.create(video_id=video_id, interruptable=False)
@@ -68,14 +62,11 @@ async def listen_youtube(video_id, output_callback):
         while chat.is_alive() and not stop_event.is_set():
             for c in chat.get().sync_items():
                 timestamp = datetime.now().strftime("%H:%M:%S")
-                output_callback(f"[{timestamp}][🔴 YouTube] {c.author.name}: {c.message}")
+                output_callback(f"[{timestamp}]{YT_PREFIX} {c.author.name}: {c.message}")
             await asyncio.sleep(1)
     except Exception as e:
         output_callback(f"Error in YouTube listener: {e}")
 
-# -------------------------------
-# TikTok Listener (с использованием TikTokLive библиотеки)
-# -------------------------------
 def listen_tiktok(username, output_callback):
     try:
         from TikTokLive import TikTokLiveClient
@@ -88,7 +79,7 @@ def listen_tiktok(username, output_callback):
                 await client.close()
                 return
             timestamp = datetime.now().strftime("%H:%M:%S")
-            output_callback(f"[{timestamp}][⚪ TikTok] {event.user.nickname}: {event.comment}")
+            output_callback(f"[{timestamp}]{TIKTOK_PREFIX} {event.user.nickname}: {event.comment}")
 
         client.add_listener(CommentEvent, on_comment)
         output_callback(f"✅ Connected to TikTok chat for user: {username}")
@@ -101,9 +92,6 @@ def run_tiktok_listener(username, output_callback):
     thread.start()
     return thread
 
-# -------------------------------
-# Конфигурация каналов
-# -------------------------------
 def save_config(channels):
     config = []
     for channel in channels:
@@ -126,9 +114,6 @@ def load_config():
         print(f"Error loading configuration: {e}")
     return []
 
-# -------------------------------
-# Настройка темы (dark mode) для ttk элементов
-# -------------------------------
 def set_dark_theme(root):
     style = ttk.Style()
     style.theme_use('clam')
@@ -154,9 +139,6 @@ def set_dark_theme(root):
                     troughcolor='#2d2d2d')
     root.configure(bg='#2d2d2d')
 
-# -------------------------------
-# Окно вывода чата
-# -------------------------------
 def create_chat_window(root):
     global chat_output
     chat_window = tk.Toplevel(root)
@@ -166,11 +148,11 @@ def create_chat_window(root):
     chat_window.protocol("WM_DELETE_WINDOW", lambda: on_chat_window_close(chat_window))
     chat_window.columnconfigure(0, weight=1)
     chat_window.rowconfigure(0, weight=1)
-    chat_output = scrolledtext.ScrolledText(chat_window, bg='#1e1e1e', fg='#ffffff', font=('Consolas', 10))
+    chat_output = scrolledtext.ScrolledText(chat_window, bg='#1e1e1e', fg='#ffffff', font=('Consolas', 12))
     chat_output.grid(row=0, column=0, sticky='nsew', padx=10, pady=10)
     chat_output.tag_config('twitch', foreground='#a970ff')
     chat_output.tag_config('youtube', foreground='#ef0434')
-    chat_output.tag_config('tiktok', foreground='#6bfbf7')
+    chat_output.tag_config('tiktok', foreground='#ffa236')
     chat_output.tag_config('info', foreground='#4CAF50')
     chat_output.tag_config('error', foreground='#F44336')
     clear_button = ttk.Button(chat_window, text="Clear Chat", command=lambda: chat_output.delete(1.0, tk.END))
@@ -186,9 +168,6 @@ def on_chat_window_close(window):
         pass
     chat_output = None
 
-# -------------------------------
-# Добавление сообщения в окно чата (с использованием after для безопасности потоков)
-# -------------------------------
 def add_chat_message(message):
     global chat_output
     if chat_output is None:
@@ -198,11 +177,11 @@ def add_chat_message(message):
         if chat_output is None:
             return
         tag = 'info'
-        if '[🟣 Twitch]' in message:
+        if TWITCH_PREFIX in message:
             tag = 'twitch'
-        elif '[🔴 YouTube]' in message:
+        elif YT_PREFIX in message:
             tag = 'youtube'
-        elif '[⚪ TikTok]' in message:
+        elif TIKTOK_PREFIX in message:
             tag = 'tiktok'
         elif 'Error' in message:
             tag = 'error'
@@ -210,18 +189,13 @@ def add_chat_message(message):
             chat_output.insert(tk.END, message + '\n', tag)
             chat_output.see(tk.END)
         except tk.TclError:
-            # Виджет уже уничтожен – ничего не делаем
             pass
 
     try:
         chat_output.after(0, insert_message)
     except tk.TclError:
-        # Если окно уже закрыто
         pass
 
-# -------------------------------
-# Главный GUI класс
-# -------------------------------
 class ChatAggregatorGUI:
     def __init__(self, root):
         self.root = root
@@ -300,10 +274,8 @@ class ChatAggregatorGUI:
         self.update_indices()
 
     def update_indices(self):
-        # Перебираем все каналы, обновляем их индекс и позицию в гриде
         for i, channel in enumerate(self.channels):
             channel["frame"].grid_configure(row=i)
-            # Обновляем команду кнопки удаления с корректным индексом
             channel["remove_btn"].configure(command=lambda idx=i: self.remove_channel_row(idx))
 
     def start_chat_monitoring(self):
@@ -367,9 +339,6 @@ class ChatAggregatorGUI:
         stop_event.set()
         self.root.destroy()
 
-# -------------------------------
-# Точка входа
-# -------------------------------
 if __name__ == "__main__":
     root = tk.Tk()
     app = ChatAggregatorGUI(root)
