@@ -297,7 +297,6 @@ class ChatAggregatorGUI:
         create_chat_window(self.root)
 
         loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
 
         tasks = []
         tiktok_threads = []
